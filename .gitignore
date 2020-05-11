@@ -1,8 +1,8 @@
 *
-!*/*.cu
-!*/*.cpp
-!*/*.a
-!*/*.h
-!*/Makefile
-!Makefile
-!.gitignore
+!*/
+!*.*
+
+img/*
+bin/*
+
+*.o
