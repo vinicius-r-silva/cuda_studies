@@ -11,6 +11,11 @@
 #include <ctype.h>
 #include <math.h>
 
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/opencv.hpp>
+
 #define CEIL(a,b)  ((a+b-1)/b)
 #define IPH        ip.Hpixels
 #define IPV        ip.Vpixels
@@ -44,52 +49,150 @@ struct ImgProp {
 	uint32_t IMAGEPIX;
 };
 
-int ThreshLo=50, ThreshHi=100;
+int ThreshLo=25, ThreshHi=50;
 
 struct ImgProp ip;
 uint8_t* TheImg, * CpyImg;
 uint8_t* GPUImg, * GPUResultImg;
 double*  GPUptr, *GPUBWImg, *GPUGaussImg, *GPUGradient, *GPUTheta;
 
+cv::Mat Image;
+
 uint8_t* ReadBMPlin(char* fn) {
-	static uint8_t* Img;
-    FILE* f = fopen(fn, "rb");
-	if (f == NULL) { printf("\n\n%s NOT FOUND\n\n", fn); exit(EXIT_FAILURE); }
-	uint8_t HeaderInfo[14];
-	fread(HeaderInfo, sizeof(uint8_t), 14, f); // read the 54-byte header
-	ip.HeaderMetaSize = *(int*)&HeaderInfo[10];
-	ip.HeaderMeta = (uint8_t*)malloc(ip.HeaderMetaSize * sizeof(uint8_t));
-	fread(ip.HeaderMeta, sizeof(uint8_t), ip.HeaderMetaSize, f); // read the 54-byte header
+    Image = cv::imread(fn);
 
-	// extract image height and width from header
-	int width = *(int*)&(ip.HeaderMeta[4]); ip.Hpixels = width;
-	int height = *(int*)&(ip.HeaderMeta[8]); ip.Vpixels = height;
-	//int RowBytes = (width * 3 + 3) & (~3); ip.Hbytes = RowBytes;
-	int RowBytes = ip.Hpixels * 3; ip.Hbytes = RowBytes;
+    if(!Image.data){                              // Check for invalid input
+        std::cout <<  "Could not open or find the image" << std::endl ;
+        exit(EXIT_FAILURE);
+    }
 
+    cv::resize(Image, Image, cv::Size(0,0), 0.5, 0.5);
+    ip.Hpixels = Image.cols;
+    ip.Vpixels = Image.rows;
+    ip.Hbytes = Image.cols * 3;
+    
 	ip.IMAGESIZE = ip.Hbytes * ip.Vpixels;
-	ip.IMAGEPIX = ip.Hpixels * ip.Vpixels;
-	memcpy(ip.HeaderInfo, HeaderInfo, 14); //save header for re-use
-	printf("\n Input File name: %17s\n\nHeaderMetaSize: %u, Hb: %u, Hp: %u, Vp: %u, File Size=%u\n\n", fn,
-		ip.HeaderMetaSize, ip.Hbytes, ip.Hpixels, ip.Vpixels, ip.IMAGESIZE);
-	// allocate memory to store the main image (1 Dimensional array)
-	Img = (uint8_t*)malloc(ip.IMAGESIZE);
-	if (Img == NULL) return Img; // Cannot allocate memory
-	// read the image from disk
-	fread(Img, sizeof(uint8_t), ip.IMAGESIZE, f); fclose(f); return Img;
+    ip.IMAGEPIX = ip.Hpixels * ip.Vpixels;
+    
+    return Image.data;
+
+	// static uint8_t* Img;
+    // FILE* f = fopen(fn, "rb");
+	// if (f == NULL) { printf("\n\n%s NOT FOUND\n\n", fn); exit(EXIT_FAILURE); }
+	// uint8_t HeaderInfo[14];
+	// fread(HeaderInfo, sizeof(uint8_t), 14, f); // read the 54-byte header
+	// ip.HeaderMetaSize = *(int*)&HeaderInfo[10];
+	// ip.HeaderMeta = (uint8_t*)malloc(ip.HeaderMetaSize * sizeof(uint8_t));
+	// fread(ip.HeaderMeta, sizeof(uint8_t), ip.HeaderMetaSize, f); // read the 54-byte header
+
+	// // extract image height and width from header
+	// int width = *(int*)&(ip.HeaderMeta[4]); ip.Hpixels = width;
+	// int height = *(int*)&(ip.HeaderMeta[8]); ip.Vpixels = height;
+	// //int RowBytes = (width * 3 + 3) & (~3); ip.Hbytes = RowBytes;
+	// int RowBytes = ip.Hpixels * 3; ip.Hbytes = RowBytes;
+
+	// ip.IMAGESIZE = ip.Hbytes * ip.Vpixels;
+	// ip.IMAGEPIX = ip.Hpixels * ip.Vpixels;
+	// memcpy(ip.HeaderInfo, HeaderInfo, 14); //save header for re-use
+	// printf("\n Input File name: %17s\n\nHeaderMetaSize: %u, Hb: %u, Hp: %u, Vp: %u, File Size=%u\n\n", fn,
+	// 	ip.HeaderMetaSize, ip.Hbytes, ip.Hpixels, ip.Vpixels, ip.IMAGESIZE);
+	// // allocate memory to store the main image (1 Dimensional array)
+	// Img = (uint8_t*)malloc(ip.IMAGESIZE);
+	// if (Img == NULL) return Img; // Cannot allocate memory
+	// // read the image from disk
+	// fread(Img, sizeof(uint8_t), ip.IMAGESIZE, f); fclose(f); return Img;
 }
 
 // Write the 1D linear-memory stored image into file.
 void WriteBMPlin(uint8_t* Img, char* fn) {
-	FILE* f = fopen(fn, "wb");
-	if (f == NULL) { printf("\n\nFILE CREATION ERROR: %s\n\n", fn); exit(1); }
-	fwrite(ip.HeaderInfo, sizeof(uint8_t), 14, f); //write header
-	fwrite(ip.HeaderMeta, sizeof(uint8_t), ip.HeaderMetaSize, f); //write header
-	fwrite(Img, sizeof(uint8_t), ip.IMAGESIZE, f); //write data
-	printf("\nOutput File name: %17s (%u x %u) File Size=%u\n\n", fn, ip.Hpixels,
-		ip.Vpixels, ip.IMAGESIZE);
-	fclose(f);
+    memcpy(Image.data, Img, ip.IMAGESIZE);
+    imwrite(fn, Image);
+
+	// FILE* f = fopen(fn, "wb");
+	// if (f == NULL) { printf("\n\nFILE CREATION ERROR: %s\n\n", fn); exit(1); }
+	// fwrite(ip.HeaderInfo, sizeof(uint8_t), 14, f); //write header
+	// fwrite(ip.HeaderMeta, sizeof(uint8_t), ip.HeaderMetaSize, f); //write header
+	// fwrite(Img, sizeof(uint8_t), ip.IMAGESIZE, f); //write data
+	// printf("\nOutput File name: %17s (%u x %u) File Size=%u\n\n", fn, ip.Hpixels,
+	// 	ip.Vpixels, ip.IMAGESIZE);
+	// fclose(f);
 }
+
+//###################################################################################//
+__global__
+void BW2ImgKernel(double *ImgBW, uint8_t *ImgResult, uint32_t Hpixels){
+    uint32_t ThrPerBlk = blockDim.x;
+    uint32_t MYbid = blockIdx.x;
+    uint32_t MYtid = threadIdx.x;
+    uint32_t MYgtid = ThrPerBlk * MYbid + MYtid;
+    uint8_t P;
+
+    uint32_t BlkPerRow = CEIL(Hpixels, ThrPerBlk);
+    uint32_t RowBytes = Hpixels * 3;
+    uint32_t MYrow = MYbid / BlkPerRow;
+    uint32_t MYcol = MYgtid - MYrow*BlkPerRow*ThrPerBlk;
+    if (MYcol >= Hpixels)return; // col out of range
+    
+    uint32_t MYsrcIndex = MYrow * RowBytes + 3 * MYcol;
+    uint32_t MYpixIndex = MYrow * Hpixels + MYcol;
+
+    P = (uint8_t)ImgBW[MYpixIndex];
+
+    ImgResult[MYsrcIndex]      = P;
+    ImgResult[MYsrcIndex + 1]  = P;
+    ImgResult[MYsrcIndex + 2]  = P;
+}
+
+
+__global__
+void Gauss2ImgKernel(double *ImgGauss, uint8_t *ImgResult, uint32_t Hpixels){
+    uint32_t ThrPerBlk = blockDim.x;
+    uint32_t MYbid = blockIdx.x;
+    uint32_t MYtid = threadIdx.x;
+    uint32_t MYgtid = ThrPerBlk * MYbid + MYtid;
+    uint8_t P;
+
+    uint32_t BlkPerRow = CEIL(Hpixels, ThrPerBlk);
+    uint32_t RowBytes = Hpixels * 3;
+    uint32_t MYrow = MYbid / BlkPerRow;
+    uint32_t MYcol = MYgtid - MYrow*BlkPerRow*ThrPerBlk;
+    if (MYcol >= Hpixels)return; // col out of range
+    
+    uint32_t MYsrcIndex = MYrow * RowBytes + 3 * MYcol;
+    uint32_t MYpixIndex = MYrow * Hpixels + MYcol;
+
+    P = (uint8_t)ImgGauss[MYpixIndex];
+
+    ImgResult[MYsrcIndex]      = P;
+    ImgResult[MYsrcIndex + 1]  = P;
+    ImgResult[MYsrcIndex + 2]  = P;
+}
+
+
+__global__
+void ImgGrad2ImgKernel(double *ImgGrad, uint8_t *ImgResult, uint32_t Hpixels){
+    uint32_t ThrPerBlk = blockDim.x;
+    uint32_t MYbid = blockIdx.x;
+    uint32_t MYtid = threadIdx.x;
+    uint32_t MYgtid = ThrPerBlk * MYbid + MYtid;
+    uint8_t P;
+
+    uint32_t BlkPerRow = CEIL(Hpixels, ThrPerBlk);
+    uint32_t RowBytes = Hpixels * 3;
+    uint32_t MYrow = MYbid / BlkPerRow;
+    uint32_t MYcol = MYgtid - MYrow*BlkPerRow*ThrPerBlk;
+    if (MYcol >= Hpixels)return; // col out of range
+    
+    uint32_t MYsrcIndex = MYrow * RowBytes + 3 * MYcol;
+    uint32_t MYpixIndex = MYrow * Hpixels + MYcol;
+
+    P = (uint8_t)ImgGrad[MYpixIndex];
+
+    ImgResult[MYsrcIndex]      = P;
+    ImgResult[MYsrcIndex + 1]  = P;
+    ImgResult[MYsrcIndex + 2]  = P;
+}
+//###################################################################################//
 
 
 __global__
@@ -114,6 +217,20 @@ void BWKernel(double *ImgBW, uint8_t *ImgGPU, uint32_t Hpixels){
     R = (double)ImgGPU[MYsrcIndex + 2];
     ImgBW[MYpixIndex] = (R+G+B)/3.0;
 }
+
+// __device__
+// double Gauss[5][5]={{  1,  1,   1,  1,  1 },
+//                     {  1,  1,   1,  1,  1 },
+//                     {  1,  1,   1,  1,  1 },
+//                     {  1,  1,   1,  1,  1 },
+//                     {  1,  1,   1,  1,  1 } };
+
+// __device__
+// double Gauss[5][5]={{ 0,  0,  0,  0,   0 },
+//                     { 0,  0,  0,  0,   0 },
+//                     { 0,  0,  1,  0,   0},
+//                     { 0,  0,  0,  0,   0 },
+//                     { 0,  0,  0,  0,   0 } };
 
 __device__
 double Gauss[5][5]={{ 2,   4,    5,  4,   2 },
@@ -140,7 +257,7 @@ void GaussKernel(double *ImgGauss, double*ImgBW, uint32_t Hpixels, uint32_t Vpix
     
     uint32_t MYpixIndex = MYrow * Hpixels + MYcol;
     
-    if ((MYrow<2) || (MYrow>Vpixels - 3) || (MYcol<2) || (MYcol>Hpixels - 3)){
+    if ((MYrow<3) || (MYrow>Vpixels - 3) || (MYcol<3) || (MYcol>Hpixels - 3)){
         ImgGauss[MYpixIndex] = 0.0;
         return;
     }else{
@@ -153,7 +270,9 @@ void GaussKernel(double *ImgGauss, double*ImgBW, uint32_t Hpixels, uint32_t Vpix
                 G += (ImgBW[indx] * Gauss[i + 2][j + 2]);
             }
         }
-        ImgGauss[MYpixIndex] = G / 159.00;
+        ImgGauss[MYpixIndex] = G / 159.00; //239.00 //159.00 //100.00
+        // if((G / 159.0) > 255.0)
+        //     printf("%lf", G / 159.0);
     }
 }
 
@@ -187,7 +306,7 @@ void SobelKernel(double *ImgGrad, double*ImgTheta,double*ImgGauss, uint32_t Hpix
     if (MYcol >= Hpixels)return; // col out of range
     
     uint32_t MYpixIndex = MYrow * Hpixels + MYcol;
-    if ((MYrow<1) || (MYrow>Vpixels - 2) || (MYcol<1) || (MYcol>Hpixels - 2)){
+    if ((MYrow<4) || (MYrow>Vpixels - 4) || (MYcol<4) || (MYcol>Hpixels - 4)){
         ImgGrad[MYpixIndex] = 0.0;
         ImgTheta[MYpixIndex] = 0.0;
         return;
@@ -204,7 +323,24 @@ void SobelKernel(double *ImgGrad, double*ImgTheta,double*ImgGauss, uint32_t Hpix
                 GY += (ImgGauss[indx] * Gy[i + 1][j + 1]);
             }
         }
+        GX = abs(GX) / 4.0;
+        GY = abs(GY) / 4.0;
         ImgGrad[MYpixIndex] = sqrt(GX*GX + GY*GY);
+        if(sqrt(GX*GX + GY*GY) > 255){ //&& MYpixIndex == 93425){
+            printf("Grad: %lf,  Gx: %lf,  Gy: %lf,  index: %u, MYrow: %u, MYcol: %d\n", sqrt(GX*GX + GY*GY), GX, GY, MYpixIndex, MYrow, MYcol);
+            printf("\n");
+
+            for(i = -1; i <= 1; i++){
+                for(j = -1; j <= 1; j++){
+                    row = MYrow + i;
+                    col = MYcol + j;
+                    indx = row*Hpixels + col;
+                    printf("%3.4lf    ", ImgGauss[indx]);
+                }
+                printf("\n");
+            }
+            printf("\n\n");
+        }
         ImgTheta[MYpixIndex] = atan(GX / GY)*180.0 / M_PI;
     }
 }
@@ -212,7 +348,7 @@ void SobelKernel(double *ImgGrad, double*ImgTheta,double*ImgGauss, uint32_t Hpix
 // Kernel that calculates the threshold image from Gradient, Theta
 // resulting image has an RGB for each pixel, same RGB for each pixel
 __global__
-void ThresholdKernel(uint8_t *ImgResult, double* ImgGrad, double* ImgTheta, uint8_t Hpixels, uint32_t Vpixels, uint32_t ThreshLo, uint32_t ThreshHi){
+void ThresholdKernel(uint8_t *ImgResult, double* ImgGrad, double* ImgTheta, uint32_t Hpixels, uint32_t Vpixels, uint32_t ThreshLo, uint32_t ThreshHi){
     uint32_t ThrPerBlk= blockDim.x;
     uint32_t MYbid= blockIdx.x;
     uint32_t MYtid= threadIdx.x;
@@ -223,6 +359,9 @@ void ThresholdKernel(uint8_t *ImgResult, double* ImgGrad, double* ImgTheta, uint
     uint32_t BlkPerRow= CEIL(Hpixels,ThrPerBlk);
     
     int MYrow = MYbid / BlkPerRow;
+    // if(MYrow > 250)
+    //     printf("Row: %d,  MYbid: %u,  BlkPerRow: %u,  Hpixels: %u,  ThrPerBlk: %u\n", MYrow, MYbid, BlkPerRow, Hpixels, ThrPerBlk);
+
     uint32_t RowBytes= Hpixels*3;
     
     int MYcol = MYgtid - MYrow*BlkPerRow*ThrPerBlk;
@@ -242,34 +381,52 @@ void ThresholdKernel(uint8_t *ImgResult, double* ImgGrad, double* ImgTheta, uint
         G = ImgGrad[MYpixIndex];
         PIXVAL= NOEDGE;
         
+            // if(G != 0)
+            //     printf("%lf  %d\n", G, MYpixIndex);
+
         if (G <= L){
+            // if(G != 0)
+                // printf("%d\n", MYpixIndex);
             PIXVAL= NOEDGE; // no edge
         
         }else if(G >= H){
+            // printf("higher than TH\n");
             PIXVAL = EDGE; // edge
         
         }else{
+            // printf("check theta\n");
             T = ImgTheta[MYpixIndex];
             if ((T<-67.5) || (T>67.5)){ 
                 // Look at left and right: [row][col-1] and [row][col+1]
-                PIXVAL= ((ImgGrad[MYpixIndex-1]>H) || (ImgGrad[MYpixIndex+1]>H)) ? EDGE :NOEDGE;
+                PIXVAL= ((ImgGrad[MYpixIndex-1]>H) || (ImgGrad[MYpixIndex+1]>H)) ? EDGE : EDGE;//NOEDGE;
             
             }else if((T >= -22.5) && (T <= 22.5)){
                 // Look at top and bottom: [row-1][col] and [row+1][col]
-                PIXVAL= ((ImgGrad[MYpixIndex-Hpixels]>H) ||(ImgGrad[MYpixIndex+Hpixels]>H)) ? EDGE : NOEDGE;
+                PIXVAL= ((ImgGrad[MYpixIndex-Hpixels]>H) ||(ImgGrad[MYpixIndex+Hpixels]>H)) ? EDGE : EDGE;//NOEDGE;
             
             }else if((T>22.5) && (T <= 67.5)){
                 // Look at upper right, lower left: [row-1][col+1] and [row+1][col-1]
-                PIXVAL= ((ImgGrad[MYpixIndex-Hpixels+1]>H) ||(ImgGrad[MYpixIndex+Hpixels-1]>H)) ? EDGE : NOEDGE;
+                PIXVAL= ((ImgGrad[MYpixIndex-Hpixels+1]>H) ||(ImgGrad[MYpixIndex+Hpixels-1]>H)) ? EDGE : EDGE;//NOEDGE;
             
             }else if((T >= -67.5) && (T<-22.5)){
                 // Look at upper left, lower right: [row-1][col-1] and [row+1][col+1]
-                PIXVAL=((ImgGrad[MYpixIndex-Hpixels-1]>H) ||(ImgGrad[MYpixIndex+Hpixels+1]>H)) ? EDGE : NOEDGE;
+                PIXVAL=((ImgGrad[MYpixIndex-Hpixels-1]>H) ||(ImgGrad[MYpixIndex+Hpixels+1]>H)) ? EDGE : EDGE;//NOEDGE;
             }
         }
         ImgResult[MYresultIndex]=PIXVAL;
         ImgResult[MYresultIndex+1]=PIXVAL;
         ImgResult[MYresultIndex+2]=PIXVAL;
+    }
+}
+
+void myBw(){
+    uint8_t px;
+    uint64_t i = 0, j = 0;
+    for(i = 0; i < ip.IMAGEPIX; i++){
+        j = i*3;
+        
+        px = (TheImg[j] + TheImg[j+1] + TheImg[j+2]) / 3;
+        CpyImg[j] = px;     CpyImg[j+1] = px;   CpyImg[j+2] = px;
     }
 }
 
@@ -296,7 +453,12 @@ int main(){
     char OutputFileName[] = "../img/edge.bmp";
 
     TheImg = ReadBMPlin(InputFileName);
-	CpyImg = (uint8_t*)malloc(ip.IMAGESIZE);
+    CpyImg = (uint8_t*)malloc(ip.IMAGESIZE);
+    
+    // memcpy(CpyImg, TheImg, ip.IMAGESIZE);
+    // myBw();
+    // WriteBMPlin(CpyImg, OutputFileName);
+    // return 0;
 
     cudaGetDeviceProperties(&GPUprop, 0);
 	SupportedKBlocks = ((uint32_t)GPUprop.maxGridSize[0] * (uint32_t)GPUprop.maxGridSize[1] *
@@ -329,26 +491,82 @@ int main(){
     BlkPerRow=CEIL(IPH, ThrPerBlk);
     NumBlocks=IPV*BlkPerRow;
 
+    //------------------------------------------------------------------------------------------------------------------//
+    //--------------------------------------------------BW--------------------------------------------------------------//
     BWKernel <<< NumBlocks, ThrPerBlk >>> (GPUBWImg, GPUImg, IPH);
     GPUDataTfrBW =sizeof(double)*ip.IMAGEPIX +sizeof(uint8_t)*ip.IMAGESIZE;
     cudaEventRecord(time2BW, 0);
 
+    // BW2ImgKernel <<< NumBlocks, ThrPerBlk >>> (GPUBWImg, GPUResultImg, IPH);
+    // gpuErrchk(cudaMemcpy(CpyImg, GPUResultImg, ip.IMAGESIZE, cudaMemcpyDeviceToHost));
+    // memcpy(Image.data, CpyImg, ip.IMAGESIZE);
+    // cv::namedWindow("BW", cv::WINDOW_AUTOSIZE );
+    // cv::imshow("BW", Image);
+    // cv::moveWindow("BW", 0, 0);
+    // cv::waitKey(1);
+
+    // gpuErrchk(cudaMemset(GPUResultImg, 0, ip.IMAGESIZE));
+
+
+
+    //------------------------------------------------------------------------------------------------------------------//
+    //------------------------------------------------GAUSS-------------------------------------------------------------//
     GaussKernel <<< NumBlocks, ThrPerBlk >>> (GPUGaussImg, GPUBWImg, IPH, IPV);
     GPUDataTfrGauss = 2*sizeof(double)*ip.IMAGEPIX;
-    cudaEventRecord(time2Gauss, 0);// after Gauss image calculation
+    cudaEventRecord(time2Gauss, 0);// after Gauss image 
 
+    // Gauss2ImgKernel <<< NumBlocks, ThrPerBlk >>> (GPUGaussImg, GPUResultImg, IPH);
+    // gpuErrchk(cudaMemcpy(CpyImg, GPUResultImg, ip.IMAGESIZE, cudaMemcpyDeviceToHost));
+    // memcpy(Image.data, CpyImg, ip.IMAGESIZE);
+    // cv::namedWindow("Gauss", cv::WINDOW_AUTOSIZE );
+    // cv::imshow("Gauss", Image);
+    // cv::moveWindow("Gauss", 1000, 0);
+    // cv::waitKey(1);
+
+    // gpuErrchk(cudaMemset(GPUResultImg, 0, ip.IMAGESIZE));
+
+
+
+    //------------------------------------------------------------------------------------------------------------------//
+    //------------------------------------------------SOBEL-------------------------------------------------------------//
     SobelKernel <<<  NumBlocks, ThrPerBlk >>> (GPUGradient, GPUTheta, GPUGaussImg, IPH, IPV);
     GPUDataTfrSobel = 3 *sizeof(double)*ip.IMAGEPIX;
     cudaEventRecord(time2Sobel, 0);// after Gradient, Theta computation
 
-    ThresholdKernel <<< NumBlocks, ThrPerBlk >>> (GPUResultImg, GPUGradient,GPUTheta, IPH, IPV, ThreshLo, ThreshHi);
+    // ImgGrad2ImgKernel <<< NumBlocks, ThrPerBlk >>> (GPUGradient, GPUResultImg, IPH);
+    // gpuErrchk(cudaMemcpy(CpyImg, GPUResultImg, ip.IMAGESIZE, cudaMemcpyDeviceToHost));
+    // memcpy(Image.data, CpyImg, ip.IMAGESIZE);
+    // cv::namedWindow("SOBEL", cv::WINDOW_AUTOSIZE );
+    // cv::imshow("SOBEL", Image);
+    // cv::moveWindow("SOBEL", 0, 500);
+    // cv::waitKey(1);
+
+    // gpuErrchk(cudaMemset(GPUResultImg, 0, ip.IMAGESIZE));
+
+
+
+    //------------------------------------------------------------------------------------------------------------------//
+    //--------------------------------------------------TH--------------------------------------------------------------//
+    ThresholdKernel <<< NumBlocks, ThrPerBlk >>> (GPUResultImg, GPUGradient,GPUTheta, ip.Hpixels, ip.Vpixels, ThreshLo, ThreshHi);
     GPUDataTfrThresh=sizeof(double)*ip.IMAGEPIX +sizeof(uint8_t)*ip.IMAGESIZE;
     cudaEventRecord(time3, 0);  // after threshold
     
     gpuErrchk(cudaMemcpy(CpyImg, GPUResultImg, ip.IMAGESIZE, cudaMemcpyDeviceToHost));
     cudaEventRecord(time4, 0);  // after GPU-> CPU tfr
+    // memcpy(Image.data, CpyImg, ip.IMAGESIZE);
+    // cv::namedWindow("TH", cv::WINDOW_AUTOSIZE );
+    // cv::imshow("TH", Image);
+    // cv::moveWindow("TH", 1000, 500);
+    // cv::waitKey(1);
 
-    
+
+
+
+
+
+    // myBw();
+
+    // while(cv::waitKey(30) != 27);
     gpuErrchk(cudaDeviceSynchronize());
     WriteBMPlin(CpyImg, OutputFileName);
     
@@ -376,7 +594,7 @@ int main(){
     printf("\n\n---------------------\n");
     printf("%s   ComputeCapab=%d.%d [max %s blocks; %d thr/blk] \n",GPUprop.name, GPUprop.major, GPUprop.minor, SupportedBlocks, MaxThrPerBlk);
     printf("\n\n---------------------\n");
-    printf("%s %s %u %d %d [%u BLOCKS, %u BLOCKS/ROW]\n", InputFileName, OutputFileName, ThrPerBlk, ThreshLo, ThreshHi, NumBlocks,BlkPerRow);
+    printf("%s %s H: %u, V: %u, TPB: %u, THl: %d, THh: %d [%u BLOCKS, %u BLOCKS/ROW]\n", InputFileName, OutputFileName, ip.Hpixels, ip.Vpixels, ThrPerBlk, ThreshLo, ThreshHi, NumBlocks,BlkPerRow);
     printf("\n\n---------------------\n");
     printf("CPU->GPU Transfer = %f ms ... %ui MB ... %f GB/s\n", tfrCPUtoGPU, MB(ip.IMAGESIZE),BW(ip.IMAGESIZE,tfrCPUtoGPU));
     printf("GPU->CPU Transfer = %f ms ... %ui MB ... %f GB/s\n", tfrGPUtoCPU, MB(ip.IMAGESIZE),BW(ip.IMAGESIZE, tfrGPUtoCPU));
