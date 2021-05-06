@@ -11,7 +11,7 @@
 #include <ctype.h>
 
 #define MAX_SAVES 1000
-#define QTD_NUMBERS 8
+#define QTD_NUMBERS 3
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -69,7 +69,7 @@ int main(){
 
     uint32_t i = 0;
     uint32_t possibilities = 1;
-    uint8_t  numbers[] = {9,9,9,9,9,9,9,9};
+    uint8_t  numbers[] = {3,3,3};
     // uint8_t  qtd_numbers = sizeof(numbers);
     for(i = 0; i < QTD_NUMBERS; i++){
         possibilities *= numbers[i];

@@ -1,0 +1,4 @@
+3 quartos:
+3! = 6 permutacoes, 3 bits
+2^3 = 8 rotações, 3 bits
+4^(3-1) = 16 pontos, 4 bits
