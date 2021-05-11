@@ -34,7 +34,7 @@
 ################################################################################
 
 # Location of the CUDA Toolkit
-CUDA_PATH ?= /usr/local/cuda-10.2
+CUDA_PATH ?= /usr/local/cuda-11.0
 
 ##############################
 # start deprecated interface #
@@ -154,6 +154,7 @@ NVCC          := $(CUDA_PATH)/bin/nvcc -ccbin $(HOST_COMPILER)
 NVCCFLAGS   := -m${TARGET_SIZE} -Xptxas -v
 CCFLAGS     :=
 LDFLAGS     :=
+EXTRA_NVCCFLAGS := -Xptxas="-v" --resource-usage
 
 # build flags
 ifeq ($(TARGET_OS),darwin)

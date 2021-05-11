@@ -8,3 +8,4 @@ bin/*
 *.o
 
 .vscode/
+geometry/saida.txt
